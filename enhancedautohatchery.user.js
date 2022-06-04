@@ -6,7 +6,7 @@
 // @version      1.5
 // @author       Ephenia (Original/Credit: Drak + Ivan Lay)
 // @description  Automatically hatches eggs at 100% completion. Adds an On/Off button for auto hatching as well as an option for automatically hatching store bought eggs and dug up fossils.
-// @updateURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/enhancedautohatchery.user.js
+// @updateURL   https://raw.githubusercontent.com/lucas-pouchot/Pokeclicker-Scripts/master/enhancedautohatchery.user.js
 // ==/UserScript==
 
 var hatchState;
@@ -21,7 +21,6 @@ var fossilColor;
 var hatcherySortVal;
 var hatcherySortDir;
 var hatcherySortSync;
-var sortSyncColor;
 var newSave;
 var trainerCards;
 var breedingDisplay = document.getElementById('breedingDisplay');
@@ -42,19 +41,12 @@ function initAutoHatch() {
     } else {
         fossilColor = "success"
     }
-    if (hatcherySortSync == "OFF") {
-        sortSyncColor = "danger"
-    } else {
-        sortSyncColor = "success"
-    }
 
     breedingDisplay.querySelector('.card-header').outerHTML += `<button id= "auto-hatch-start" class="btn btn-sm btn-` + hatchColor + `" style="position: absolute;left: 0px;top: 0px;width: 65px;height: 41px;font-size: 7pt;">
     Auto Hatch [`+ hatchState + `]
     </button>`
 
-    document.getElementById('breedingModal').querySelector('.modal-header').querySelectorAll('button')[1].outerHTML += `<button id="sort-sync" class="btn btn-` + sortSyncColor + `" style="margin-left:20px;">
-    Pokemon List Sync [`+ hatcherySortSync + `]
-    </button>
+    document.getElementById('breedingModal').querySelector('.modal-header').querySelectorAll('button')[1].outerHTML += `
     <button id="auto-egg" class="btn btn-`+ eggColor + `" style="margin-left:20px;">
     Auto Egg [`+ eggState + `]
     </button>
@@ -63,7 +55,6 @@ function initAutoHatch() {
     </button>`
 
     $("#auto-hatch-start").click(toggleAutoHatch)
-    $("#sort-sync").click(changesortsync)
     $("#auto-egg").click(toggleEgg)
     $("#auto-fossil").click(toggleFossil)
     //document.getElementById('breedingModal').querySelector('button[aria-controls="breeding-sort"]').setAttribute("style", "display:none");
@@ -89,21 +80,6 @@ function toggleAutoHatch() {
         clearInterval(autoHatchLoop)
     }
     document.getElementById('auto-hatch-start').innerHTML = `Auto Hatch [` + hatchState + `]<br>`
-}
-
-function changesortsync() {
-    if (hatcherySortSync == "OFF") {
-        hatcherySortSync = "ON"
-        localStorage.setItem("hatcherySortSync", hatcherySortSync);
-        document.getElementById("sort-sync").classList.remove('btn-danger');
-        document.getElementById("sort-sync").classList.add('btn-success');
-    } else {
-        hatcherySortSync = "OFF"
-        localStorage.setItem("hatcherySortSync", hatcherySortSync);
-        document.getElementById("sort-sync").classList.remove('btn-success');
-        document.getElementById("sort-sync").classList.add('btn-danger');
-    }
-    document.getElementById('sort-sync').innerHTML = `Pokemon List Sync [` + hatcherySortSync + `]`
 }
 
 function toggleEgg() {
@@ -136,37 +112,12 @@ function toggleFossil() {
     document.getElementById('auto-fossil').innerHTML = `Auto Fossil [` + fossilState + `]`
 }
 
+function getHatcherySortedPokemon(pokemonList) {
+    return pokemonList.sort(PartyController.compareBy(Settings.getSetting('hatcherySort').observableValue(), Settings.getSetting('hatcherySortDirection').observableValue()));
+}
+
 function autoHatcher() {
     autoHatchLoop = setInterval(function () {
-        //change daycare sorting
-        if (hatcherySortSync == "ON") {
-            var pS = Settings.getSetting('partySort');
-            var hS = Settings.getSetting('hatcherySort');
-            if (pS.observableValue() != hatcherySortVal) {
-                hS.observableValue(pS.observableValue())
-                hatcherySortVal = pS.observableValue()
-                localStorage.setItem("hatcherySortVal", hatcherySortVal);
-            }
-            if (hS.observableValue() != hatcherySortVal) {
-                hatcherySortVal = hS.observableValue()
-                pS.observableValue(hS.observableValue())
-                localStorage.setItem("hatcherySortVal", hatcherySortVal);
-            }
-
-            var pSD = Settings.getSetting('partySortDirection');
-            var hSD = Settings.getSetting('hatcherySortDirection');
-            if (pSD.observableValue() != hatcherySortDir) {
-                hatcherySortDir = pSD.observableValue()
-                hSD.observableValue(pSD.observableValue())
-                localStorage.setItem("hatcherySortDir", hatcherySortDir);
-            }
-            if (hSD.observableValue() != hatcherySortDir) {
-                hatcherySortDir = hSD.observableValue()
-                pSD.observableValue(hSD.observableValue())
-                localStorage.setItem("hatcherySortDir", hatcherySortDir);
-            }
-        }
-
         // Attempt to hatch each egg. If the egg is at 100% it will succeed
         [0, 1, 2, 3].forEach((index) => App.game.breeding.hatchPokemonEgg(index));
 
@@ -175,7 +126,7 @@ function autoHatcher() {
             App.game.breeding.canAccess() == true && // Can access the Hatchery
             App.game.party.hasMaxLevelPokemon() && // Don't run if you don't have any level 100 Pokemon
             App.game.breeding.hasFreeEggSlot() // Has an open egg slot
-        ) {
+            ) {
             var hasEgg;
             var hasFossil;
             if (eggState == "ON") {
@@ -261,63 +212,7 @@ function autoHatcher() {
             }
 
             // Filter the sorted list of Pokemon based on the parameters set in the Hatchery screen
-            let filteredEggList = PartyController.getSortedList().filter(
-                (partyPokemon) => {
-                    // Only breedable Pokemon
-                    if (partyPokemon.breeding || partyPokemon.level < 100) {
-                        return false;
-                    }
-                    // Check based on category
-                    if (BreedingController.filter.category() >= 0) {
-                        if (
-                            partyPokemon.category !== BreedingController.filter.category()
-                        ) {
-                            return false;
-                        }
-                    }
-                    // Check based on shiny status
-                    if (BreedingController.filter.shinyStatus() >= 0) {
-                        if (
-                            +partyPokemon.shiny !== BreedingController.filter.shinyStatus()
-                        ) {
-                            return false;
-                        }
-                    }
-                    // Check based on native region
-                    if (BreedingController.filter.region() > -2) {
-                        if (
-                            PokemonHelper.calcNativeRegion(partyPokemon.name) !==
-                            BreedingController.filter.region()
-                        ) {
-                            return false;
-                        }
-                    }
-                    // Check if either of the types match
-                    const type1 =
-                        BreedingController.filter.type1() > -2
-                            ? BreedingController.filter.type1()
-                            : null;
-                    const type2 =
-                        BreedingController.filter.type2() > -2
-                            ? BreedingController.filter.type2()
-                            : null;
-                    if (type1 !== null || type2 !== null) {
-                        const { type: types } = pokemonMap[partyPokemon.name];
-                        if ([type1, type2].includes(PokemonType.None)) {
-                            const type = type1 == PokemonType.None ? type2 : type1;
-                            if (!BreedingController.isPureType(partyPokemon, type)) {
-                                return false;
-                            }
-                        } else if (
-                            (type1 !== null && !types.includes(type1)) ||
-                            (type2 !== null && !types.includes(type2))
-                        ) {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-            );
+            let filteredEggList = getHatcherySortedPokemon(App.game.party.caughtPokemon.filter(partyPokemon => BreedingController.visible(partyPokemon)()));
 
             try {
                 //console.log(filteredEggList[0])
